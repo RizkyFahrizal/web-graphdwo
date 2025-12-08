@@ -7,9 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ===============================================================
-//  DATABASE CONNECTION POOL (SUPER FAST & EFFICIENT)
-// ===============================================================
+// DATABASE CONNECTION
 const db = mysql.createPool({
   host: "localhost",
   user: "root",
@@ -20,17 +18,17 @@ const db = mysql.createPool({
   queueLimit: 0
 });
 
-// Helper: fungsi query universal (lebih cepat & lebih pendek)
+// Helper Query
 async function query(sql, params = []) {
   const [rows] = await db.execute(sql, params);
   return rows;
 }
 
 // ===============================================================
-//  API ENDPOINTS — EFISIEN & BERSIH
+//  API ENDPOINTS (Updated for Drill Down)
 // ===============================================================
 
-// 1. SALES BY CATEGORY
+// 1. SALES BY CATEGORY (Global - Tidak berubah)
 app.get("/api/category-sales", async (req, res) => {
   try {
     const rows = await query(`
@@ -47,24 +45,37 @@ app.get("/api/category-sales", async (req, res) => {
   }
 });
 
-// 2. TOP 10 PRODUCTS
+// 2. TOP PRODUCTS (BISA FILTER CATEGORY)
 app.get("/api/top-products", async (req, res) => {
   try {
-    const rows = await query(`
+    const { category } = req.query; // Ambil parameter ?category=...
+    
+    // Base Query
+    let sql = `
       SELECT p.ProductName AS name, SUM(f.LineTotal) AS value
       FROM factsales f
       JOIN dimproduct p ON f.ProductKey = p.ProductKey
-      GROUP BY p.ProductName
-      ORDER BY value DESC
-      LIMIT 10
-    `);
+    `;
+    
+    const params = [];
+
+    // Jika ada filter category, tambahkan WHERE
+    if (category) {
+      sql += ` WHERE p.Category = ? `;
+      params.push(category);
+    }
+
+    // Lanjutkan Grouping dan Ordering
+    sql += ` GROUP BY p.ProductName ORDER BY value DESC LIMIT 10`;
+
+    const rows = await query(sql, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 3. ORDERS TREND (12 Bulan Terakhir)
+// 3. ORDERS TREND (Global - Tidak berubah)
 app.get("/api/orders-trend", async (req, res) => {
   try {
     const rows = await query(`
@@ -78,13 +89,13 @@ app.get("/api/orders-trend", async (req, res) => {
       ORDER BY d.Year DESC, d.Month DESC
       LIMIT 12
     `);
-    res.json(rows.reverse()); // Urut dari lama ke baru
+    res.json(rows.reverse());
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 4. SALES BY TERRITORY
+// 4. SALES BY TERRITORY (Global - Tidak berubah)
 app.get("/api/territory-sales", async (req, res) => {
   try {
     const rows = await query(`
@@ -99,18 +110,29 @@ app.get("/api/territory-sales", async (req, res) => {
   }
 });
 
-// 5. SALES BY SUBCATEGORY
+// 5. SALES BY SUBCATEGORY (BISA FILTER CATEGORY)
 app.get("/api/subcategory-sales", async (req, res) => {
   try {
-    const rows = await query(`
+    const { category } = req.query;
+
+    let sql = `
       SELECT p.Subcategory AS name, SUM(f.LineTotal) AS value
       FROM factsales f
       JOIN dimproduct p ON f.ProductKey = p.ProductKey
       WHERE p.Subcategory IS NOT NULL
-      GROUP BY p.Subcategory
-      ORDER BY value DESC
-      LIMIT 5
-    `);
+    `;
+
+    const params = [];
+
+    // Tambahkan kondisi AND jika category ada
+    if (category) {
+      sql += ` AND p.Category = ? `;
+      params.push(category);
+    }
+
+    sql += ` GROUP BY p.Subcategory ORDER BY value DESC LIMIT 10`;
+
+    const rows = await query(sql, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -120,13 +142,10 @@ app.get("/api/subcategory-sales", async (req, res) => {
 // 6. LOGIN (Mock)
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
-
   if (username === "admin" && password === "admin123") {
     return res.json({ success: true, token: "whadv-token-123" });
   }
-
   return res.json({ success: false, message: "Username/Password salah!" });
 });
 
-// ===============================================================
 app.listen(3001, () => console.log("✅ Backend berjalan di http://localhost:3001"));
